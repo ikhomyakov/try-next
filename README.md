@@ -12,12 +12,7 @@ Each call to [`try_next`](https://docs.rs/try-next/latest/try_next/trait.TryNext
 - `Ok(None)` — when the source is exhausted, and  
 - `Err(error)` — if an error occurred while fetching the next item.
 
-This trait is intentionally **synchronous** and does not depend on `async`, `Poll`, or the `futures` crate.  
-It’s ideal for parsers, readers, or generators that yield data step by step and may fail.
-
-## Example
-
-A simple source that produces numbers until it hits a failure:
+This trait is intentionally **synchronous** and does not depend on `async`, `Poll`, or the `futures` crate. It’s ideal for parsers, readers, or generators that yield data step by step and may fail.
 
 ## Example
 
