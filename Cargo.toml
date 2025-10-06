@@ -1,0 +1,11 @@
+[package]
+name = "try-next"
+version = "0.1.0"
+edition = "2024"
+authors = ["IKH Software, Inc. <support@ikhsoftware.com>"]
+license = "LGPL-3.0-or-later"
+repository = "https://github.com/ikhomyakov/try-next.git"
+keywords = ["try", "fallible", "iterator", "synchronous", "error-handling"]
+categories = ["algorithms", "no-std"]
+description = "A minimal synchronous trait for fallible, pull-based item sources."
+readme = "README.md"
