@@ -22,34 +22,47 @@
 //!
 //! ## Example
 //!
-//! ```
+//! A small source that yields a few numbers, then ends normally, then errors:
+//!
+//! ```rust
 //! use try_next::TryNext;
 //!
-//! struct Counter {
-//!     current: usize,
-//!     limit: usize,
+//! #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+//! enum MyError {
+//!     Broken,
 //! }
 //!
-//! impl TryNext for Counter {
-//!     type Item = usize;
-//!     type Error = std::convert::Infallible;
+//! struct Demo {
+//!     state: u8,
+//! }
+//!
+//! impl TryNext for Demo {
+//!     type Item = u8;
+//!     type Error = MyError;
 //!
 //!     fn try_next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-//!         if self.current < self.limit {
-//!             let v = self.current;
-//!             self.current += 1;
-//!             Ok(Some(v))
-//!         } else {
-//!             Ok(None)
+//!         match self.state {
+//!             0..=2 => {
+//!                 let v = self.state;
+//!                 self.state += 1;
+//!                 Ok(Some(v)) // produce some items
+//!             }
+//!             3 => {
+//!                 self.state += 1;
+//!                 Ok(None) // normal end
+//!             }
+//!             _ => Err(MyError::Broken), // error afterwards
 //!         }
 //!     }
 //! }
 //!
-//! let mut c = Counter { current: 0, limit: 3 };
-//! assert_eq!(c.try_next().unwrap(), Some(0));
-//! assert_eq!(c.try_next().unwrap(), Some(1));
-//! assert_eq!(c.try_next().unwrap(), Some(2));
-//! assert_eq!(c.try_next().unwrap(), None);
+//! let mut src = Demo { state: 0 };
+//!
+//! assert_eq!(src.try_next(), Ok(Some(0)));
+//! assert_eq!(src.try_next(), Ok(Some(1)));
+//! assert_eq!(src.try_next(), Ok(Some(2)));
+//! assert_eq!(src.try_next(), Ok(None));
+//! assert_eq!(src.try_next(), Err(MyError::Broken));
 //! ```
 //!
 //! ## See also
@@ -148,7 +161,10 @@ mod tests {
 
     #[test]
     fn counter_yields_then_none() {
-        let mut c = Counter { current: 0, limit: 3 };
+        let mut c = Counter {
+            current: 0,
+            limit: 3,
+        };
 
         assert_eq!(c.try_next().unwrap(), Some(0));
         assert_eq!(c.try_next().unwrap(), Some(1));
@@ -161,14 +177,21 @@ mod tests {
 
     #[test]
     fn drain_collects_all_items() {
-        let c = Counter { current: 0, limit: 5 };
+        let c = Counter {
+            current: 0,
+            limit: 5,
+        };
         let items = drain(c).unwrap();
         assert_eq!(items, vec![0, 1, 2, 3, 4]);
     }
 
     #[test]
     fn error_propagates() {
-        let mut s = FailableCounter { current: 0, fail_at: 2, failed: false };
+        let mut s = FailableCounter {
+            current: 0,
+            fail_at: 2,
+            failed: false,
+        };
 
         // First two items OK
         assert_eq!(s.try_next(), Ok(Some(0)));
@@ -183,12 +206,13 @@ mod tests {
 
     #[test]
     fn works_through_trait_object() {
-        let mut src: Box<dyn TryNext<Item = usize, Error = Infallible>> =
-            Box::new(Counter { current: 0, limit: 2 });
+        let mut src: Box<dyn TryNext<Item = usize, Error = Infallible>> = Box::new(Counter {
+            current: 0,
+            limit: 2,
+        });
 
         assert_eq!(src.try_next().unwrap(), Some(0));
         assert_eq!(src.try_next().unwrap(), Some(1));
         assert_eq!(src.try_next().unwrap(), None);
     }
 }
-

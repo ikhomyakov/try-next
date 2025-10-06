@@ -17,36 +17,52 @@ It’s ideal for parsers, readers, or generators that yield data step by step an
 
 ## Example
 
+A simple source that produces numbers until it hits a failure:
+
+## Example
+
+A small source that yields a few numbers, then ends normally, then errors:
+
 ```rust
 use try_next::TryNext;
-use std::convert::Infallible;
 
-struct Counter {
-    current: usize,
-    limit: usize,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MyError {
+    Broken,
 }
 
-impl TryNext for Counter {
-    type Item = usize;
-    type Error = Infallible;
+struct Demo {
+    state: u8,
+}
+
+impl TryNext for Demo {
+    type Item = u8;
+    type Error = MyError;
 
     fn try_next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        if self.current < self.limit {
-            let v = self.current;
-            self.current += 1;
-            Ok(Some(v))
-        } else {
-            Ok(None)
+        match self.state {
+            0..=2 => {
+                let v = self.state;
+                self.state += 1;
+                Ok(Some(v)) // produce some items
+            }
+            3 => {
+                self.state += 1;
+                Ok(None) // normal end
+            }
+            _ => Err(MyError::Broken), // error afterwards
         }
     }
 }
 
 fn main() {
-    let mut counter = Counter { current: 0, limit: 3 };
+    let mut src = Demo { state: 0 };
 
-    while let Some(value) = counter.try_next().unwrap() {
-        println!("{value}");
-    }
+    println!("{:?}", src.try_next()); // Ok(Some(0))
+    println!("{:?}", src.try_next()); // Ok(Some(1))
+    println!("{:?}", src.try_next()); // Ok(Some(2))
+    println!("{:?}", src.try_next()); // Ok(None)
+    println!("{:?}", src.try_next()); // Err(Broken)
 }
 ```
 
