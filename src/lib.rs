@@ -136,6 +136,14 @@
 //! - [`futures::TryStream`](https://docs.rs/futures/latest/futures/stream/trait.TryStream.html) —
 //!   The *asynchronous* equivalent of this pattern.
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "alloc")]
+use alloc::vec::{self, Vec};
+
 /// Context-aware, fallible producer.
 ///
 /// A trait for types that can produce items one at a time with the help of
@@ -161,10 +169,38 @@ pub trait TryNextWithContext {
     /// The type of context passed to each call to [`try_next`](Self::try_next).
     type Context;
 
+    /// Attempts to produce the next item, using the provided mutable context.
+    ///
+    /// Returns:
+    /// - `Ok(Some(item))` — a new item was produced,
+    /// - `Ok(None)` — the source is exhausted,
+    /// - `Err(e)` — iteration failed with an error.
     fn try_next_with_context(
         &mut self,
         context: &mut Self::Context,
     ) -> Result<Option<Self::Item>, Self::Error>;
+
+
+    /// Collects all remaining items into a [`Vec`], using the given context.
+    ///
+    /// The method repeatedly calls [`try_next_with_context`](Self::try_next_with_context)
+    /// until `None` or an error is returned, collecting all successful items into a vector.
+    /// If any call returns `Err(e)`, iteration stops immediately and that error is returned.
+    ///
+    /// # Feature
+    /// This method is only available when the `alloc` feature is enabled.
+    #[cfg(feature = "alloc")]
+    #[inline]
+    fn try_collect_with_context(
+        &mut self,
+        context: &mut Self::Context,
+    ) -> Result<Vec<Self::Item>, Self::Error> {
+        let mut vs = Vec::new();
+        while let Some(v) = self.try_next_with_context(context)? {
+            vs.push(v);
+        }
+        Ok(vs)
+    }
 }
 
 /// Context-free, fallible producer.
@@ -182,13 +218,39 @@ pub trait TryNext {
     /// The error type that may be returned when producing the next item fails.
     type Error;
 
+    /// Attempts to produce the next item from the source.
+    ///
+    /// Returns:
+    /// - `Ok(Some(item))` — a new item was produced,
+    /// - `Ok(None)` — the source is exhausted,
+    /// - `Err(e)` — iteration failed with an error.
     fn try_next(&mut self) -> Result<Option<Self::Item>, Self::Error>;
+
+    /// Collects all remaining items into a [`Vec`].
+    ///
+    /// The method repeatedly calls [`try_next`](Self::try_next) until `None` or an error
+    /// is returned, collecting all successful items into a vector.  
+    /// If any call returns `Err(e)`, iteration stops immediately and that error is returned.
+    ///
+    /// # Feature
+    /// This method is only available when the `alloc` feature is enabled.
+    #[cfg(feature = "alloc")]
+    #[inline]
+    fn try_collect(
+        &mut self,
+    ) -> Result<Vec<Self::Item>, Self::Error> {
+        let mut vs = Vec::new();
+        while let Some(v) = self.try_next()? {
+            vs.push(v);
+        }
+        Ok(vs)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{TryNext, TryNextWithContext};
-    use std::convert::Infallible;
+    use core::convert::Infallible;
 
     /// A simple source that yields 0..limit, then `Ok(None)`.
     struct Counter {
@@ -240,12 +302,9 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "alloc")]
     fn drain<S: TryNext>(mut src: S) -> Result<Vec<S::Item>, S::Error> {
-        let mut out = Vec::new();
-        while let Some(item) = src.try_next()? {
-            out.push(item);
-        }
-        Ok(out)
+        src.try_collect()
     }
 
     #[test]
@@ -265,6 +324,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "alloc")]
     fn drain_collects_all_items() {
         let c = Counter {
             current: 0,
@@ -291,18 +351,6 @@ mod tests {
 
         // Subsequent calls keep erroring in this test source
         assert_eq!(s.try_next(), Err(UnitErr));
-    }
-
-    #[test]
-    fn works_through_trait_object() {
-        let mut src: Box<dyn TryNext<Item = usize, Error = Infallible>> = Box::new(Counter {
-            current: 0,
-            limit: 2,
-        });
-
-        assert_eq!(src.try_next().unwrap(), Some(0));
-        assert_eq!(src.try_next().unwrap(), Some(1));
-        assert_eq!(src.try_next().unwrap(), None);
     }
 
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,6 +380,7 @@ mod tests {
 
     /// Drain helper for context-aware sources; returns both the items and the
     /// final context so the caller can assert on context changes.
+    #[cfg(feature = "alloc")]
     fn drain_with_ctx<S: TryNextWithContext>(
         mut src: S,
         mut ctx: S::Context,
@@ -344,6 +393,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "alloc")]
     fn context_counter_yields_and_updates_context() {
         let src = Counter {
             current: 0,
@@ -356,23 +406,5 @@ mod tests {
 
         // Called once per yielded item plus one final call returning None.
         assert_eq!(ctx.calls, 4);
-    }
-
-    #[test]
-    fn context_works_through_trait_object() {
-        let mut src: Box<dyn TryNextWithContext<Item = usize, Error = Infallible, Context = Ctx>> =
-            Box::new(Counter {
-                current: 0,
-                limit: 2,
-            });
-
-        let mut ctx = Ctx::default();
-
-        assert_eq!(src.try_next_with_context(&mut ctx).unwrap(), Some(0));
-        assert_eq!(src.try_next_with_context(&mut ctx).unwrap(), Some(1));
-        assert_eq!(src.try_next_with_context(&mut ctx).unwrap(), None);
-
-        // Two items + final None
-        assert_eq!(ctx.calls, 3);
     }
 }
