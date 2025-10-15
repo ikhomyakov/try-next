@@ -1,14 +1,17 @@
 //! Minimal traits for synchronous, fallible, pull-based item sources.
 //!
-//! This module defines two related traits:
+//! This module defines three related traits:
 //!
 //! - [`TryNext`] — a context-free, fallible producer of items,
-//! - [`TryNextWithContext`] — a context-aware variant that allows the caller
+//! - [`TryNextWithContext<C>`] — a context-aware variant that allows the caller
 //!   to supply mutable external state on each iteration step.
+//! - [`IterInput<I>`] — an input adapter that wraps any iterator
+//!   and provides `TryNext` and `TryNextWithContext<C>` interface, automatically
+//!   fusing the iterator
 //!
-//! Both traits follow the same basic pattern: they represent a source that can
-//! **attempt to produce the next item**, which may succeed, fail, or signal the
-//! end of the sequence.
+//! Traits [`TryNext`] and [`TryNextWithContext<C>`] follow the same basic pattern:
+//! they represent a source that can **attempt to produce the next item**, which may
+//! succeed, fail, or signal the end of the sequence.
 //!
 //! ## Core idea
 //!
@@ -64,7 +67,7 @@
 //! assert_eq!(src.try_next(), Err(MyError::Broken));
 //! ```
 //!
-//! ## [`TryNextWithContext`]
+//! ## [`TryNextWithContext<C>`]
 //!
 //! A generalization of [`TryNext`] that allows each call to [`try_next_with_context`]
 //! to receive a mutable reference to a caller-supplied **context**.
@@ -84,14 +87,13 @@
 //!
 //! struct Ctx { next_val: u8 }
 //!
-//! impl TryNextWithContext for Producer {
+//! impl TryNextWithContext<Ctx> for Producer {
 //!     type Item = u8;
 //!     type Error = MyError;
-//!     type Context = Ctx;
 //!
 //!     fn try_next_with_context(
 //!         &mut self,
-//!         ctx: &mut Self::Context,
+//!         ctx: &mut Ctx,
 //!     ) -> Result<Option<Self::Item>, Self::Error> {
 //!         if ctx.next_val < 3 {
 //!             let v = ctx.next_val;
@@ -112,12 +114,50 @@
 //! assert_eq!(producer.try_next_with_context(&mut ctx), Ok(None));
 //! ```
 //!
+//! ## [`IterInput<I>`]
+//!
+//! A simple [`TryNextWithContext`] adapter for ordinary Rust iterators.
+//!
+//! `IterInput` wraps any [`Iterator`] and exposes it as a
+//! [`TryNextWithContext<C>`] producer that never fails and ignores the provided context.
+//! Internally, the iterator is automatically *fused* — once it yields `None`,
+//! all subsequent calls also return `None`.
+//!
+//! This is useful for integrating plain iterators into APIs or components that
+//! expect a context-aware, fallible producer, without changing their semantics.
+//!
+//! ### Example
+//!
+//! ```rust
+//! use try_next::TryNextWithContext;
+//! use try_next::IterInput;
+//!
+//! struct DummyCtx;
+//!
+//! let data = [10, 20, 30];
+//! let mut input = IterInput::from(data.into_iter());
+//! let mut ctx = DummyCtx;
+//!
+//! assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(10));
+//! assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(20));
+//! assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(30));
+//! assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+//! assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None); // fused
+//! ```
+//!
+//! ### Notes
+//!
+//! - The `C` type parameter exists for trait compatibility but is not used.
+//! - The error type is always [`Infallible`], as the wrapped iterator cannot fail.
+//! - Ideal for testing or bridging APIs that use [`TryNextWithContext<C>`] but only
+//!   need to pull from a fixed iterator.
+//!
 //! ## Design notes
 //!
 //! - Both traits are deliberately **minimal**: they define no combinators or adapters.
 //!   Their purpose is to provide a simple, low-level interface for fallible, stepwise
 //!   data production.
-//! - `TryNextWithContext` can often serve as a building block for adapters that
+//! - `TryNextWithContext<C>` can often serve as a building block for adapters that
 //!   integrate external state or resources.
 //! - These traits are a good fit for *incremental* or *stateful* producers such as
 //!   **parsers**, **lexers**, **tokenizers**, and other components that advance in
@@ -152,22 +192,25 @@ use alloc::vec::{self, Vec};
 /// This trait is **synchronous** — each call to [`try_next`](Self::try_next)
 /// blocks until an item is produced or an error occurs.
 ///
-/// The [`Context`](Self::Context) type allows the caller to provide
-/// additional state or resources used during iteration. It can hold shared
+/// The context type `C` allows the caller to provide additional
+/// state or resources used during iteration. It can hold shared
 /// mutable state, configuration data, or external resources such as file
 /// handles, buffers, or network clients. Each call to [`try_next`](Self::try_next)
 /// receives a mutable reference to this context.
 ///
-/// See the [module-level documentation](self) for details and examples.
-pub trait TryNextWithContext {
+/// # Type Parameters
+///
+/// * `C` — The type of the external context passed to each call of
+///   [`try_next_with_context`](Self::try_next_with_context). It represents the
+///   environment or state that the producer can use or mutate while producing
+///   items. For example, this might be a reader, a buffer pool, or a user-defined
+///   structure containing shared resources.
+pub trait TryNextWithContext<C> {
     /// The type of items yielded by this source.
     type Item;
 
     /// The error type that may be returned when producing the next item fails.
     type Error;
-
-    /// The type of context passed to each call to [`try_next`](Self::try_next).
-    type Context;
 
     /// Attempts to produce the next item, using the provided mutable context.
     ///
@@ -175,11 +218,8 @@ pub trait TryNextWithContext {
     /// - `Ok(Some(item))` — a new item was produced,
     /// - `Ok(None)` — the source is exhausted,
     /// - `Err(e)` — iteration failed with an error.
-    fn try_next_with_context(
-        &mut self,
-        context: &mut Self::Context,
-    ) -> Result<Option<Self::Item>, Self::Error>;
-
+    fn try_next_with_context(&mut self, context: &mut C)
+    -> Result<Option<Self::Item>, Self::Error>;
 
     /// Collects all remaining items into a [`Vec`], using the given context.
     ///
@@ -193,7 +233,7 @@ pub trait TryNextWithContext {
     #[inline]
     fn try_collect_with_context(
         &mut self,
-        context: &mut Self::Context,
+        context: &mut C,
     ) -> Result<Vec<Self::Item>, Self::Error> {
         let mut vs = Vec::new();
         while let Some(v) = self.try_next_with_context(context)? {
@@ -236,9 +276,7 @@ pub trait TryNext {
     /// This method is only available when the `alloc` feature is enabled.
     #[cfg(feature = "alloc")]
     #[inline]
-    fn try_collect(
-        &mut self,
-    ) -> Result<Vec<Self::Item>, Self::Error> {
+    fn try_collect(&mut self) -> Result<Vec<Self::Item>, Self::Error> {
         let mut vs = Vec::new();
         while let Some(v) = self.try_next()? {
             vs.push(v);
@@ -247,9 +285,68 @@ pub trait TryNext {
     }
 }
 
+/// An input adapter that wraps any iterator and provides `TryNext` and
+/// `TryNextWithContext<C>` interface, automatically fusing the iterator
+/// so it never yields items after returning `None` once.
+///
+/// # Type Parameters
+///
+/// - `I`: The underlying iterator type. It can be any `Iterator`.
+/// - `C`: The *context* type, which is passed by mutable reference to each
+///   `try_next_with_context` call.
+pub struct IterInput<I>
+where
+    I: Iterator,
+{
+    /// The underlying fused iterator.
+    iter: core::iter::Fuse<I>,
+}
+
+impl<I> IterInput<I>
+where
+    I: Iterator,
+{
+    /// Creates a new `IterInput` from any iterator.
+    ///
+    /// The iterator is automatically fused internally, so that once it returns
+    /// `None`, all further `next()` calls will also return `None`.
+    pub fn from(iter: I) -> Self {
+        Self { iter: iter.fuse() }
+    }
+}
+
+impl<I> TryNext for IterInput<I>
+where
+    I: Iterator,
+{
+    type Item = I::Item;
+    type Error = core::convert::Infallible;
+
+    #[inline]
+    fn try_next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        Ok(self.iter.next())
+    }
+}
+
+impl<I, C> TryNextWithContext<C> for IterInput<I>
+where
+    I: Iterator,
+{
+    type Item = I::Item;
+    type Error = core::convert::Infallible;
+
+    #[inline]
+    fn try_next_with_context(
+        &mut self,
+        _context: &mut C,
+    ) -> Result<Option<Self::Item>, Self::Error> {
+        Ok(self.iter.next())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{TryNext, TryNextWithContext};
+    use super::{IterInput, TryNext, TryNextWithContext};
     use core::convert::Infallible;
 
     /// A simple source that yields 0..limit, then `Ok(None)`.
@@ -358,14 +455,13 @@ mod tests {
         calls: usize,
     }
 
-    impl TryNextWithContext for Counter {
+    impl TryNextWithContext<Ctx> for Counter {
         type Item = usize;
         type Error = Infallible;
-        type Context = Ctx;
 
         fn try_next_with_context(
             &mut self,
-            ctx: &mut Self::Context,
+            ctx: &mut Ctx,
         ) -> Result<Option<Self::Item>, Self::Error> {
             ctx.calls += 1;
             if self.current < self.limit {
@@ -381,10 +477,10 @@ mod tests {
     /// Drain helper for context-aware sources; returns both the items and the
     /// final context so the caller can assert on context changes.
     #[cfg(feature = "alloc")]
-    fn drain_with_ctx<S: TryNextWithContext>(
+    fn drain_with_ctx<C, S: TryNextWithContext<C>>(
         mut src: S,
-        mut ctx: S::Context,
-    ) -> Result<(Vec<S::Item>, S::Context), S::Error> {
+        mut ctx: C,
+    ) -> Result<(Vec<S::Item>, C), S::Error> {
         let mut out = Vec::new();
         while let Some(item) = src.try_next_with_context(&mut ctx)? {
             out.push(item);
@@ -406,5 +502,58 @@ mod tests {
 
         // Called once per yielded item plus one final call returning None.
         assert_eq!(ctx.calls, 4);
+    }
+
+    #[derive(Default)]
+    struct DummyCtx;
+
+    #[test]
+    fn iter_input_yields_all_items_from_array() {
+        let mut input = IterInput::from([1, 2, 3].into_iter());
+        let mut ctx = DummyCtx;
+
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(1));
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(2));
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(3));
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+    }
+
+    #[test]
+    fn iter_input_is_fused_after_exhaustion() {
+        let mut input = IterInput::from(0..1);
+        let mut ctx = DummyCtx;
+
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(0));
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+    }
+
+    #[test]
+    fn iter_input_with_empty_range_returns_none() {
+        let mut input = IterInput::from(0..0);
+        let mut ctx = DummyCtx;
+
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+    }
+
+    #[test]
+    fn iter_input_over_string_bytes() {
+        let mut input = IterInput::from("hello, world!".bytes());
+        let mut ctx = DummyCtx;
+
+        // Collect bytes manually via try_next_with_context
+        let mut collected = [0u8; 13];
+        let mut count = 0;
+
+        while let Some(byte) = input.try_next_with_context(&mut ctx).unwrap() {
+            collected[count] = byte;
+            count += 1;
+        }
+
+        assert_eq!(&collected[..count], b"hello, world!");
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+        assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
     }
 }

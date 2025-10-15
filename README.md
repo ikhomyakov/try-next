@@ -2,19 +2,20 @@
 
 Minimal traits for synchronous, fallible, pull-based item sources.
 
-
 ## Overview
 
-This module defines two related traits:
-
+This module defines three related traits:
+    
 - [`TryNext`] — a context-free, fallible producer of items,
-- [`TryNextWithContext`] — a context-aware variant that allows the caller
+- [`TryNextWithContext<C>`] — a context-aware variant that allows the caller
   to supply mutable external state on each iteration step.
+- [`IterInput<I>`] — an input adapter that wraps any iterator
+  and provides `TryNext` and `TryNextWithContext<C>` interface, automatically
+  fusing the iterator
 
-Both traits follow the same basic pattern: they represent a source that can
-**attempt to produce the next item**, which may succeed, fail, or signal the
-end of the sequence.
-
+Traits [`TryNext`] and [`TryNextWithContext<C>`] follow the same basic pattern:
+they represent a source that can **attempt to produce the next item**, which may
+succeed, fail, or signal the end of the sequence.
 
 ## Core idea
 
@@ -72,7 +73,7 @@ assert_eq!(src.try_next(), Err(MyError::Broken));
 ```
 
 
-## [`TryNextWithContext`]
+## [`TryNextWithContext<C>`]
 
 A generalization of [`TryNext`] that allows each call to [`try_next_with_context`]
 to receive a mutable reference to a caller-supplied **context**.
@@ -92,14 +93,13 @@ struct Producer;
 
 struct Ctx { next_val: u8 }
 
-impl TryNextWithContext for Producer {
+impl TryNextWithContext<Ctx> for Producer {
     type Item = u8;
     type Error = MyError;
-    type Context = Ctx;
 
     fn try_next_with_context(
         &mut self,
-        ctx: &mut Self::Context,
+        ctx: &mut Ctx,
     ) -> Result<Option<Self::Item>, Self::Error> {
         if ctx.next_val < 3 {
             let v = ctx.next_val;
@@ -118,6 +118,44 @@ assert_eq!(producer.try_next_with_context(&mut ctx), Ok(Some(1)));
 assert_eq!(producer.try_next_with_context(&mut ctx), Ok(Some(2)));
 assert_eq!(producer.try_next_with_context(&mut ctx), Ok(None));
 ```
+
+## [`IterInput<I>`]
+
+A simple [`TryNextWithContext`] adapter for ordinary Rust iterators.
+
+`IterInput` wraps any [`Iterator`] and exposes it as a
+[`TryNextWithContext<C>`] producer that never fails and ignores the provided context.
+Internally, the iterator is automatically *fused* — once it yields `None`,
+all subsequent calls also return `None`.
+
+This is useful for integrating plain iterators into APIs or components that
+expect a context-aware, fallible producer, without changing their semantics.
+
+### Example
+
+```rust
+use try_next::TryNextWithContext;
+use try_next::IterInput;
+
+struct DummyCtx;
+
+let data = [10, 20, 30];
+let mut input = IterInput::from(data.into_iter());
+let mut ctx = DummyCtx;
+
+assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(10));
+assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(20));
+assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), Some(30));
+assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None); // fused
+```
+
+### Notes
+
+- The `C` type parameter exists for trait compatibility but is not used.
+- The error type is always [`Infallible`], as the wrapped iterator cannot fail.
+- Ideal for testing or bridging APIs that use [`TryNextWithContext<C>`] but only
+  need to pull from a fixed iterator.
 
 
 ## Why not just `Iterator<Item = Result<T, E>>`?
@@ -161,7 +199,7 @@ use try_next::{TryNext, TryNextWithContext};
 - Both traits are deliberately **minimal**: they define no combinators or adapters.
   Their purpose is to provide a simple, low-level interface for fallible, stepwise
   data production.
-- `TryNextWithContext` can often serve as a building block for adapters that
+- `TryNextWithContext<C>` can often serve as a building block for adapters that
   integrate external state or resources.
 - These traits are a good fit for *incremental* or *stateful* producers such as
   **parsers**, **lexers**, **tokenizers**, and other components that advance in
