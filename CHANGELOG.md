@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * Always uses the [`Infallible`] error type and ignores the context parameter.
   * Useful for bridging ordinary iterators into APIs that expect fallible or context-aware producers.
 
+* **`TryNext` and `TryNextWithContext<C>`: optional generic stats type `S`**
+  * Both traits now accept an optional type parameter `S: Default + Copy` for lightweight statistics or metadata snapshots.
+  * Added a new `stats()` method that returns `S` (defaults to `()`).
+  * Enables producers to expose simple runtime metrics such as iteration counts or internal state summaries.
+
+
 ### Breaking Change
 
 * **`TryNextWithContext` type parameterization**

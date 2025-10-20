@@ -17,6 +17,7 @@ Traits [`TryNext`] and [`TryNextWithContext<C>`] follow the same basic pattern:
 they represent a source that can **attempt to produce the next item**, which may
 succeed, fail, or signal the end of the sequence.
 
+
 ## Core idea
 
 Each `try_next*` method call returns a [`Result`] with three possible outcomes:
@@ -156,6 +157,38 @@ assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None); // fused
 - The error type is always [`Infallible`], as the wrapped iterator cannot fail.
 - Ideal for testing or bridging APIs that use [`TryNextWithContext<C>`] but only
   need to pull from a fixed iterator.
+
+
+## Optional stats type `S`
+
+Both [`TryNext`] and [`TryNextWithContext<C>`] accept an optional generic parameter  
+`S: Default + Copy`, representing a lightweight *statistics snapshot*.
+
+By default, `S = ()`, and calling `stats()` simply returns `()`.  
+Implementors may define custom `S` types to expose simple metrics such as iteration counts, processing progress, or internal state summaries.
+
+```rust
+use try_next::TryNext;
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct MyStats { calls: u32 }
+
+struct Demo { calls: u32, left: u32 }
+
+impl TryNext<MyStats> for Demo {
+    type Item = u32;
+    type Error = core::convert::Infallible;
+
+    fn try_next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        self.calls += 1;
+        if self.left == 0 { return Ok(None); }
+        let out = self.left - 1;
+        self.left -= 1;
+        Ok(Some(out))
+    }
+
+    fn stats(&self) -> MyStats { MyStats { calls: self.calls } }
+}
 
 
 ## Why not just `Iterator<Item = Result<T, E>>`?

@@ -2,14 +2,14 @@
 //!
 //! This module defines three related traits:
 //!
-//! - [`TryNext`] — a context-free, fallible producer of items,
-//! - [`TryNextWithContext<C>`] — a context-aware variant that allows the caller
+//! - [`TryNext<S = ()>`] — a context-free, fallible producer of items,
+//! - [`TryNextWithContext<C, S = ()>`] — a context-aware variant that allows the caller
 //!   to supply mutable external state on each iteration step.
 //! - [`IterInput<I>`] — an input adapter that wraps any iterator
 //!   and provides `TryNext` and `TryNextWithContext<C>` interface, automatically
 //!   fusing the iterator
 //!
-//! Traits [`TryNext`] and [`TryNextWithContext<C>`] follow the same basic pattern:
+//! Traits [`TryNext<S = ()>`] and [`TryNextWithContext<C, S = ()>`] follow the same basic pattern:
 //! they represent a source that can **attempt to produce the next item**, which may
 //! succeed, fail, or signal the end of the sequence.
 //!
@@ -26,7 +26,40 @@
 //! generators, or readers. For asynchronous, non-blocking sources, use
 //! [`futures::TryStream`](https://docs.rs/futures/latest/futures/stream/trait.TryStream.html).
 //!
-//! ## [`TryNext`]
+//! ### Optional stats type `S`
+//!
+//! Both [`TryNext`] and [`TryNextWithContext<C>`] accept an **optional generic**
+//! `S` that represents a *lightweight stats snapshot* for an implementation.
+//! By default, `S = ()` and [`stats`](TryNext::stats)/[`stats`](TryNextWithContext::stats)
+//! simply return `()`. Implementors may choose a custom `S` to expose metrics
+//! (counters, flags, etc.) and override `stats()` to return them. The only
+//! requirement is that `S: Default + Copy`.
+//!
+//! ```rust
+//! use try_next::TryNext;
+//!
+//! #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+//! struct MyStats { calls: u32 }
+//!
+//! struct Demo { calls: u32, left: u32 }
+//!
+//! impl TryNext<MyStats> for Demo {
+//!     type Item = u32;
+//!     type Error = core::convert::Infallible;
+//!
+//!     fn try_next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+//!         self.calls += 1;
+//!         if self.left == 0 { return Ok(None); }
+//!         let out = self.left - 1;
+//!         self.left -= 1;
+//!         Ok(Some(out))
+//!     }
+//!
+//!     fn stats(&self) -> MyStats { MyStats { calls: self.calls } }
+//! }
+//! ```
+//!
+//! ## [`TryNext<S = ()>`]
 //!
 //! The simplest case: a self-contained, fallible producer that doesn’t depend on
 //! any external context.
@@ -67,9 +100,9 @@
 //! assert_eq!(src.try_next(), Err(MyError::Broken));
 //! ```
 //!
-//! ## [`TryNextWithContext<C>`]
+//! ## [`TryNextWithContext<C, S = ()>`]
 //!
-//! A generalization of [`TryNext`] that allows each call to [`try_next_with_context`]
+//! A generalization of [`TryNext<S = ()>`] that allows each call to [`try_next_with_context`]
 //! to receive a mutable reference to a caller-supplied **context**.
 //!
 //! The context can hold shared mutable state, configuration data, or external
@@ -116,10 +149,10 @@
 //!
 //! ## [`IterInput<I>`]
 //!
-//! A simple [`TryNextWithContext`] adapter for ordinary Rust iterators.
+//! A simple [`TryNextWithContext<C, S = ()>`] adapter for ordinary Rust iterators.
 //!
 //! `IterInput` wraps any [`Iterator`] and exposes it as a
-//! [`TryNextWithContext<C>`] producer that never fails and ignores the provided context.
+//! [`TryNextWithContext<C, S = ()>`] producer that never fails and ignores the provided context.
 //! Internally, the iterator is automatically *fused* — once it yields `None`,
 //! all subsequent calls also return `None`.
 //!
@@ -151,13 +184,15 @@
 //! - The error type is always [`Infallible`], as the wrapped iterator cannot fail.
 //! - Ideal for testing or bridging APIs that use [`TryNextWithContext<C>`] but only
 //!   need to pull from a fixed iterator.
+//! - The optional stats type parameter `S` on the traits is independent of the
+//!   iterator and commonly left as the default `()`.
 //!
 //! ## Design notes
 //!
-//! - Both traits are deliberately **minimal**: they define no combinators or adapters.
+//! - All traits are deliberately **minimal**: they define no combinators or adapters.
 //!   Their purpose is to provide a simple, low-level interface for fallible, stepwise
 //!   data production.
-//! - `TryNextWithContext<C>` can often serve as a building block for adapters that
+//! - `TryNextWithContext<C, S = ()>` can often serve as a building block for adapters that
 //!   integrate external state or resources.
 //! - These traits are a good fit for *incremental* or *stateful* producers such as
 //!   **parsers**, **lexers**, **tokenizers**, and other components that advance in
@@ -200,12 +235,16 @@ use alloc::vec::{self, Vec};
 ///
 /// # Type Parameters
 ///
-/// * `C` — The type of the external context passed to each call of
+/// - `C` - The type of the external context passed to each call of
 ///   [`try_next_with_context`](Self::try_next_with_context). It represents the
 ///   environment or state that the producer can use or mutate while producing
 ///   items. For example, this might be a reader, a buffer pool, or a user-defined
 ///   structure containing shared resources.
-pub trait TryNextWithContext<C> {
+/// - `S` - Optional stats type.
+pub trait TryNextWithContext<C, S = ()>
+where
+    S: Default + Copy,
+{
     /// The type of items yielded by this source.
     type Item;
 
@@ -241,6 +280,10 @@ pub trait TryNextWithContext<C> {
         }
         Ok(vs)
     }
+
+    fn stats(&self) -> S {
+        S::default()
+    }
 }
 
 /// Context-free, fallible producer.
@@ -251,7 +294,12 @@ pub trait TryNextWithContext<C> {
 /// This trait is **synchronous** — each call to [`try_next`](Self::try_next)
 /// blocks until an item is produced or an error occurs. See the
 /// [module-level documentation](self) for details and examples.
-pub trait TryNext {
+///
+/// - `S` - Optional stats type.
+pub trait TryNext<S = ()>
+where
+    S: Default + Copy,
+{
     /// The type of items yielded by this source.
     type Item;
 
@@ -282,6 +330,10 @@ pub trait TryNext {
             vs.push(v);
         }
         Ok(vs)
+    }
+
+    fn stats(&self) -> S {
+        S::default()
     }
 }
 
@@ -555,5 +607,89 @@ mod tests {
         assert_eq!(&collected[..count], b"hello, world!");
         assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
         assert_eq!(input.try_next_with_context(&mut ctx).unwrap(), None);
+    }
+
+    #[test]
+    fn stats_default_is_unit() {
+        // With the default S=() the blanket stats() should return ().
+        let c = Counter {
+            current: 0,
+            limit: 1,
+        };
+        let unit_stats: () = TryNext::stats(&c);
+        assert_eq!(unit_stats, ());
+    }
+
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    struct MyStats {
+        calls: usize,
+    }
+
+    /// A tiny source that tracks the number of `try_next` calls in `stats()`.
+    struct StatsSource {
+        remaining: usize,
+        emitted: usize,
+        call_count: usize,
+    }
+
+    impl TryNext<MyStats> for StatsSource {
+        type Item = usize;
+        type Error = Infallible;
+
+        fn try_next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+            self.call_count += 1;
+            if self.remaining == 0 {
+                return Ok(None);
+            }
+            let v = self.emitted;
+            self.emitted += 1;
+            self.remaining -= 1;
+            Ok(Some(v))
+        }
+
+        fn stats(&self) -> MyStats {
+            MyStats {
+                calls: self.call_count,
+            }
+        }
+    }
+
+    #[test]
+    fn custom_stats_are_reported() {
+        let mut s = StatsSource {
+            remaining: 3,
+            emitted: 0,
+            call_count: 0,
+        };
+        assert_eq!(s.stats(), MyStats { calls: 0 });
+
+        // 3 items followed by None => 4 total calls
+        assert_eq!(s.try_next().unwrap(), Some(0));
+        assert_eq!(s.try_next().unwrap(), Some(1));
+        assert_eq!(s.try_next().unwrap(), Some(2));
+        assert_eq!(s.try_next().unwrap(), None);
+
+        assert_eq!(s.stats(), MyStats { calls: 4 });
+    }
+
+    #[test]
+    fn iter_input_try_next_works_without_context() {
+        // Ensure the context-free TryNext impl behaves as expected.
+        let mut input = IterInput::from([10, 20, 30].into_iter());
+        assert_eq!(TryNext::try_next(&mut input).unwrap(), Some(10));
+        assert_eq!(TryNext::try_next(&mut input).unwrap(), Some(20));
+        assert_eq!(TryNext::try_next(&mut input).unwrap(), Some(30));
+        assert_eq!(TryNext::try_next(&mut input).unwrap(), None);
+        assert_eq!(TryNext::try_next(&mut input).unwrap(), None); // fused
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn iter_input_try_collect_collects_all() {
+        let mut input = IterInput::from([7, 8, 9].into_iter());
+        let items = input.try_collect().unwrap();
+        assert_eq!(items, vec![7, 8, 9]);
+        // And it stays exhausted.
+        assert_eq!(TryNext::try_next(&mut input).unwrap(), None);
     }
 }
