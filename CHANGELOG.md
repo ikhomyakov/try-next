@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2025-10-14
 
+### Breaking Change
+
+* **`TryNextWithContext` type parameterization**
+
+  * The associated type `Context` has been moved to a type parameter:
+    from `trait TryNextWithContext { type Context; ... }`
+    to `trait TryNextWithContext<C> { ... }`.
+  * Implementations must now specify the context type as a parameter, e.g.
+    `impl TryNextWithContext<MyContext> for MyProducer { ... }`.
+  * This change also removes the need for PhantomData markers in generic
+    implementations like [IterInput<I>], since the context type is no longer
+    part of the trait’s associated types.
+
 ### Added
 
 * **`IterInput<I>` adapter**
@@ -21,19 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * Added a new `stats()` method that returns `S` (defaults to `()`).
   * Enables producers to expose simple runtime metrics such as iteration counts or internal state summaries.
 
-
-### Breaking Change
-
-* **`TryNextWithContext` type parameterization**
-
-  * The associated type `Context` has been moved to a type parameter:
-    from `trait TryNextWithContext { type Context; ... }`
-    to `trait TryNextWithContext<C> { ... }`.
-  * Implementations must now specify the context type as a parameter, e.g.
-    `impl TryNextWithContext<MyContext> for MyProducer { ... }`.
-  * This change also removes the need for PhantomData markers in generic
-    implementations like [IterInput<I>], since the context type is no longer
-    part of the trait’s associated types.
+* **`TryNext` and `TryNextWithContext<C>`: implementations for BufReader<R>**
+  * Supports any R: Read, reads one byte at a time.
 
 
 ## [0.3.0] - 2025-10-13

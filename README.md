@@ -12,6 +12,8 @@ This module defines three related traits:
 - [`IterInput<I>`] — an input adapter that wraps any iterator
   and provides `TryNext` and `TryNextWithContext<C>` interface, automatically
   fusing the iterator
+- [`std::io::BufReader<R>`] — implementations of the `TryNext` and `TryNextWithContext<C>`
+  traits for any `BufReader<R>` where `R: Read`.
 
 Traits [`TryNext`] and [`TryNextWithContext<C>`] follow the same basic pattern:
 they represent a source that can **attempt to produce the next item**, which may
@@ -189,6 +191,38 @@ impl TryNext<MyStats> for Demo {
 
     fn stats(&self) -> MyStats { MyStats { calls: self.calls } }
 }
+```
+
+
+## [`TryNext`] and [`TryNextWithContext<C>`] for `BufReader<R>`
+
+`try-next` now includes built-in support for [`std::io::BufReader`] as a fallible, byte-oriented source.
+
+This allows you to iterate over bytes from any `Read` stream — including files, sockets, or standard input — using the same familiar trait methods.
+
+### Example
+
+```rust
+use std::io::{self, BufReader};
+use try_next::TryNext;
+
+fn main() -> io::Result<()> {
+    let mut reader = BufReader::new(io::stdin());
+
+    // Reads one byte at a time until EOF
+    while let Some(byte) = reader.try_next()? {
+        print!("{}", byte as char);
+    }
+
+    Ok(())
+}
+```
+
+### Highlights
+
+* Works with any `R: Read`
+* Reads one `u8` at a time, returning `Ok(None)` at EOF
+* Propagates I/O errors automatically
 
 
 ## Why not just `Iterator<Item = Result<T, E>>`?
@@ -217,7 +251,7 @@ Add this line to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-try-next = "0.2"
+try-next = "0.4"
 ```
 
 Then import the trait:
