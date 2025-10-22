@@ -396,6 +396,9 @@ where
     }
 }
 
+#[cfg(feature = "std")]
+pub mod io;
+
 #[cfg(test)]
 mod tests {
     use super::{IterInput, TryNext, TryNextWithContext};
