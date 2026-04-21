@@ -1,4 +1,4 @@
-# try-next &nbsp; [![Crates.io](https://img.shields.io/crates/v/try-next.svg)](https://crates.io/crates/try-next) [![Documentation](https://docs.rs/parlex/badge.svg)](https://docs.rs/try-next) [![License: LGPL-3.0-or-later](https://img.shields.io/badge/License-LGPL%203.0--or--later-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0) [![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org)
+# try-next &nbsp; [![Crates.io](https://img.shields.io/crates/v/try-next.svg)](https://crates.io/crates/try-next) [![Documentation](https://docs.rs/parlex/badge.svg)](https://docs.rs/try-next) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org)
 
 Minimal traits for synchronous, fallible, pull-based item sources.
 
@@ -251,7 +251,7 @@ Add this line to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-try-next = "0.4"
+try-next = "0.5"
 ```
 
 Then import the trait:
@@ -297,13 +297,13 @@ use try_next::{TryNext, TryNextWithContext};
 
 ## License
 
-Released under the terms of the GNU Lesser General Public License, version 3.0 or (at your option) any later version (LGPL-3.0-or-later).
+Released under the [MIT License](LICENSE.md).
 
 
 ## Contribution
 
 Contributions are welcome!
-Unless explicitly stated otherwise, any contribution intentionally submitted for inclusion in `try-next` by you shall be licensed as above, without any additional terms or conditions.
+Unless explicitly stated otherwise, any contribution intentionally submitted for inclusion in `try-next` by you shall be licensed under the MIT License, without any additional terms or conditions.
 
 
 ### Author
