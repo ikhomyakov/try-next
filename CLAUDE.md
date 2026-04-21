@@ -35,4 +35,4 @@ Implements `TryNext` and `TryNextWithContext` for `BufReader<R: Read>`, yielding
 
 - All tests are inline `#[cfg(test)]` modules within source files.
 - The crate is `no_std`-compatible; guard `std`-only code with `#[cfg(feature = "std")]` and `alloc`-only code with `#[cfg(feature = "alloc")]`.
-- Edition 2024. License: LGPL-3.0-or-later.
+- Edition 2024. License: MIT.

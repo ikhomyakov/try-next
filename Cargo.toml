@@ -1,9 +1,9 @@
 [package]
 name = "try-next"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 authors = ["IKH Software, Inc. <support@ikhsoftware.com>"]
-license = "LGPL-3.0-or-later"
+license = "MIT"
 repository = "https://github.com/ikhomyakov/try-next.git"
 keywords = ["try", "fallible", "iterator", "synchronous", "error-handling"]
 categories = ["algorithms", "no-std"]
