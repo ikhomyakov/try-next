@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 * **License changed from LGPL-3.0-or-later to MIT.**
+* Changed crate category from `algorithms` to `rust-patterns`.
+
+### Added
+
+* `rust-version = "1.85"` (MSRV) in Cargo.toml.
+
+### Fixed
+
+* Removed unused `self` import from `alloc::vec`.
+* Fixed incorrect "asynchronously" wording in `io` module docs.
 
 ## [0.4.0] - 2025-10-14
 
