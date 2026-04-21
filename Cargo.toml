@@ -2,11 +2,12 @@
 name = "try-next"
 version = "0.5.0"
 edition = "2024"
+rust-version = "1.85"
 authors = ["IKH Software, Inc. <support@ikhsoftware.com>"]
 license = "MIT"
 repository = "https://github.com/ikhomyakov/try-next.git"
 keywords = ["try", "fallible", "iterator", "synchronous", "error-handling"]
-categories = ["algorithms", "no-std"]
+categories = ["rust-patterns", "no-std"]
 description = "A minimal synchronous trait for fallible, pull-based item sources."
 readme = "README.md"
 

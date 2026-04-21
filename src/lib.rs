@@ -217,7 +217,7 @@
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
-use alloc::vec::{self, Vec};
+use alloc::vec::Vec;
 
 /// Context-aware, fallible producer.
 ///

@@ -5,7 +5,7 @@
 //! fallible reading of bytes from any [`Read`] stream.
 //!
 //! These traits abstract over iterating through potentially fallible
-//! sources that yield elements asynchronously or sequentially. By
+//! sources that yield elements sequentially. By
 //! implementing them for `BufReader`, this module allows buffered reading
 //! of single bytes in a way that works well for streaming parsers or
 //! byte-oriented protocols.
